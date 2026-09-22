@@ -1,0 +1,174 @@
+/* Shared style of the w2b pages, a small Bootstrap-like set; inlined into each page at build time, linked directly from disk. */
+:root {
+	--fg: #212529;
+	--muted: #6c757d;
+	--bg: #f3f4f6;
+	--card: #fff;
+	--border: #dee2e6;
+	--dark: #212529;
+	--primary: #0d6efd;
+	--primary-hover: #0b5ed7;
+	--danger: #dc3545;
+	--radius: 0.375rem;
+	--mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+	margin: 0;
+	font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	color: var(--fg);
+	background: var(--bg);
+}
+
+h3 { margin: 0 0 0.75rem; font-size: 1.1rem; font-weight: 600; }
+p { margin: 0.5rem 0; }
+a { color: var(--primary); }
+.muted { color: var(--muted); }
+
+/* Top bar: brand on the left, view links at the right; on a phone the links are smaller and closer so all five stay on one line */
+.navbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.25rem 1rem;
+	padding: 0.6rem 1rem;
+	color: #fff;
+	background: var(--dark);
+}
+.navbar .brand { margin-right: auto; font-size: 1.15rem; font-weight: 600; }
+.navbar .brand small { margin-left: 0.5rem; font-size: 0.85rem; font-weight: normal; color: #adb5bd; }
+.navbar a { padding: 0.2rem 0; color: #adb5bd; text-decoration: none; border-bottom: 2px solid transparent; }
+.navbar a:hover, .navbar a.active { color: #fff; border-bottom-color: var(--primary); }
+@media (max-width: 30rem) {
+	.navbar { gap: 0.25rem 0.6rem; }
+	.navbar a { font-size: 0.9rem; }
+}
+
+.container { max-width: 52rem; margin: 0 auto; padding: 1rem; }
+
+.card {
+	margin-bottom: 1rem;
+	padding: 1rem;
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+
+/* A row of controls; the heading in it takes the free space */
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+.toolbar h3 { flex: 1; margin: 0; }
+.toolbar .form-control { flex: 1; min-width: 12rem; width: auto; }
+.table + .toolbar { margin-top: 0.75rem; }
+
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td { padding: 0.4rem 0.5rem; text-align: left; vertical-align: top; border-top: 1px solid var(--border); }
+.table tr:first-child th, .table tr:first-child td { border-top: 0; }
+.table th { width: 35%; font-weight: normal; color: var(--muted); }
+.table td { font-family: var(--mono); font-size: 0.9em; word-break: break-all; }
+
+.btn {
+	display: inline-block;
+	padding: 0.375rem 0.75rem;
+	font: inherit;
+	color: var(--primary);
+	text-decoration: none;
+	white-space: nowrap;
+	cursor: pointer;
+	background: transparent;
+	border: 1px solid var(--primary);
+	border-radius: var(--radius);
+}
+.btn:hover { color: #fff; background: var(--primary); }
+.btn-primary { color: #fff; background: var(--primary); }
+.btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn-danger { color: var(--danger); border-color: var(--danger); }
+.btn-danger:hover { color: #fff; background: var(--danger); }
+.btn:disabled { color: var(--muted); background: transparent; border-color: var(--muted); opacity: 0.6; pointer-events: none; }
+
+label { display: block; margin: 0.75rem 0 0.25rem; }
+.check { display: flex; align-items: center; gap: 0.4rem; margin: 0.5rem 0; }
+
+/* A form's sections, their parts, and the help line under each field */
+.card h4 { margin: 1.25rem 0 0; padding-top: 0.75rem; font-size: 1rem; font-weight: 600; border-top: 1px solid var(--border); }
+.card h5 { margin: 1rem 0 0; font-size: 0.9rem; font-weight: 600; color: var(--muted); }
+.card h5 + .toolbar { margin: 0.5rem 0 0; }
+.help { display: block; margin: 0.2rem 0 0.25rem; font-size: 0.85em; line-height: 1.35; color: var(--muted); }
+.check + .help { margin-top: -0.35rem; }
+
+/* A characteristic's property bits, read-only */
+.bits { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.9rem; margin: 0.25rem 0 0.5rem; font-size: 0.85em; color: var(--muted); }
+.bits label { display: inline-flex; align-items: center; gap: 0.3rem; margin: 0; }
+
+.form-control {
+	display: block;
+	width: 100%;
+	padding: 0.375rem 0.75rem;
+	font: inherit;
+	color: var(--fg);
+	background: #fff;
+	border: 1px solid #ced4da;
+	border-radius: var(--radius);
+}
+.form-control:focus { outline: 0; border-color: #86b7fe; box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25); }
+.form-control:disabled { color: var(--muted); background: #e9ecef; }
+
+/* Form fields side by side where the screen allows, one per line on a phone */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0 1rem; margin-bottom: 0.75rem; }
+
+/* The relay list: one row per rule, its buttons on the right, below it on a phone */
+.rules > div { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.6rem 0; border-top: 1px solid var(--border); }
+.rules > div:first-child { border-top: 0; }
+.rules .grow { flex: 1; min-width: 14rem; }
+.rules small { display: block; font-family: var(--mono); color: var(--muted); word-break: break-all; }
+.badge { display: inline-block; margin-left: 0.4rem; padding: 0 0.4rem; font-size: 0.8em; color: var(--muted); background: #e9ecef; border-radius: var(--radius); }
+.badge-danger { color: #fff; background: var(--danger); }
+
+.alert { margin-bottom: 1rem; padding: 0.75rem 1rem; border: 1px solid transparent; border-radius: var(--radius); }
+.alert-danger { color: #842029; background: #f8d7da; border-color: #f5c2c7; }
+
+progress { display: block; width: 100%; height: 1rem; margin: 0.75rem 0 0.25rem; accent-color: var(--primary); }
+
+/* Selectable rows, as in the setup page's network list; text without a row (scanning, nothing found) stays plain */
+.list > div {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem 1rem;
+	padding: 0.6rem 0.75rem;
+	border-top: 1px solid var(--border);
+	cursor: pointer;
+}
+/* a scan row's name takes the room; its signal and the Probe button stand at the right, below it on a phone */
+.list > div > div { flex: 1; }
+.list > div:first-child { border-top: 0; }
+.list > div:hover { background: #f8f9fa; }
+.list > div.waiting, .list > div.disabled { cursor: default; }
+.list > div.waiting:hover, .list > div.disabled:hover { background: none; }
+.list > div.disabled > div { color: var(--muted); }
+.list span { color: var(--muted); white-space: nowrap; }
+
+/* A zone a running scan or probe greys out and blocks; its .status line stays on top, with a spinner */
+.zone { position: relative; }
+.zone.busy::after { content: ""; position: absolute; inset: 0; z-index: 1; background: rgba(255, 255, 255, 0.65); cursor: progress; }
+.zone.busy .status { position: relative; z-index: 2; color: var(--fg); }
+.zone.busy .status::before {
+	content: "";
+	display: inline-block;
+	width: 1em;
+	height: 1em;
+	margin-right: 0.5em;
+	vertical-align: -0.15em;
+	border: 2px solid var(--border);
+	border-top-color: var(--primary);
+	border-radius: 50%;
+	animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+pre { margin: 0; overflow: auto; font-family: var(--mono); font-size: 0.8rem; line-height: 1.35; white-space: pre-wrap; word-break: break-all; }
+pre.console { height: 60vh; padding: 0.75rem; color: #e9ecef; background: var(--dark); border-radius: var(--radius); }
+pre.code { max-height: 60vh; padding: 0.75rem; background: #f8f9fa; border: 1px solid var(--border); border-radius: var(--radius); }

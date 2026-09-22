@@ -1,0 +1,1935 @@
+<!DOCTYPE html>
+<!-- The web UI on the LAN address; each state change (rules, time zone, import, firmware, restart) is a button, the drastic ones confirmed. -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>w2b</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="w2b.css">
+</head>
+<body>
+<nav class="navbar">
+<span class="brand">w2b<small id="host"></small></span>
+<a href="#relays">Relays</a>
+<a href="#status">Status</a>
+<a href="#log">Log</a>
+<a href="#config">Config</a>
+<a href="#firmware">Firmware</a>
+</nav>
+<main class="container">
+<div id="msg" class="alert alert-danger" hidden></div>
+
+<section id="relays" hidden>
+<div class="card">
+<div class="toolbar"><h3>Relays</h3><button type="button" class="btn btn-primary" id="addrule">Add</button></div>
+<p class="muted">Each rule bridges a TCP port on the LAN to one BLE device: what a client sends goes to the device, what the device sends
+goes to every client.</p>
+<p class="muted" id="rulelimits"></p>
+<div class="rules" id="rulelist"></div>
+<p id="rulesmsg"></p>
+</div>
+<div class="card" id="ruleform" hidden>
+<h3 id="formtitle">Add relay</h3>
+
+<h4>General</h4>
+<div class="grid">
+<div><label for="f_name">Name</label><input class="form-control" id="f_name"><small class="help">What the list and the log call this relay.</small></div>
+</div>
+<label class="check"><input type="checkbox" id="f_enabled"> enabled</label>
+<small class="help" id="enabledhelp">An enabled relay listens on its port and connects to its device.</small>
+
+<h4>TCP host</h4>
+<div class="grid">
+<div><label for="f_port">Listen port</label><input class="form-control" id="f_port" type="number" min="1" max="65535"><small class="help" id="porthelp"></small></div>
+<div><label for="f_clients">Max clients</label><input class="form-control" id="f_clients" type="number" min="1"><small class="help" id="clientshelp"></small></div>
+</div>
+<label class="check"><input type="checkbox" id="f_close"> close the TCP clients when BLE is lost</label>
+<small class="help">So the clients notice and connect again; unchecked, they stay connected while the relay reconnects BLE.</small>
+
+<h4>BLE</h4>
+<div class="zone" id="blezone">
+<h5>Device</h5>
+<div class="toolbar"><button type="button" class="btn" id="blescan">Scan</button><button type="button" class="btn" id="preset" hidden>HF-LPT270 preset</button></div>
+<small class="help">Scan listens for the BLE devices nearby. Probe connects to one, reads its services, characteristics and what it tells
+about itself (name, maker, model), and writes nothing; picking a device fills its address, its name and the service it advertises, and
+probes it unless that was done.</small>
+<small class="help" id="presethelp" hidden>The preset fills the HF-LPT270's service and characteristics.</small>
+<p class="muted status" id="scanmsg"></p>
+<div class="list" id="scanlist"></div>
+<div class="grid">
+<div><label for="f_address">Address</label><input class="form-control" id="f_address" placeholder="xx:xx:xx:xx:xx:xx"><small class="help">Six hex bytes with colons. Empty: the relay connects to the strongest device that advertises the name, and the log warns when more than one does.</small></div>
+<div><label for="f_target">Name</label><input class="form-control" id="f_target" placeholder="as the device advertises it"><small class="help">As the device advertises it. Enough without an address; with one it only labels the device.</small></div>
+</div>
+
+<h5>Service</h5>
+<div class="grid">
+<div><label for="f_service">Service</label><select class="form-control" id="f_servicepick" hidden></select><input class="form-control" id="f_service" placeholder="16-, 32- or 128-bit UUID"><small class="help">The GATT service that holds TX and RX. After a probe, the device's services; otherwise the UUID, 16-bit, 32-bit or 128-bit with dashes.</small></div>
+</div>
+
+<h5>TX: TCP to BLE</h5>
+<div class="grid">
+<div><label for="f_txmode">Characteristic</label><select class="form-control" id="f_txmode"><option value="auto">Select automatically</option><option value="uuid">Select manually</option><option value="none">None</option></select><small class="help" id="txhelp"></small></div>
+<div><label for="f_tx">TX characteristic</label><select class="form-control" id="f_txpick" hidden></select><input class="form-control" id="f_tx" placeholder="characteristic UUID"><small class="help" id="txchoicehelp"></small></div>
+<div><label for="f_write">Write</label><select class="form-control" id="f_write"><option value="with">with response if offered</option><option value="without">without response</option></select><small class="help">With response the device confirms each write before the next goes out; without is faster, and a write the device cannot take is lost. The TCP clients see no difference.</small></div>
+</div>
+<div class="bits" id="txbits"></div>
+
+<h5>RX: BLE to TCP</h5>
+<div class="grid">
+<div><label for="f_rxmode">Characteristic</label><select class="form-control" id="f_rxmode"><option value="auto">Select automatically</option><option value="uuid">Select manually</option><option value="none">None</option></select><small class="help" id="rxhelp"></small></div>
+<div><label for="f_rx">RX characteristic</label><select class="form-control" id="f_rxpick" hidden></select><input class="form-control" id="f_rx" placeholder="characteristic UUID"><small class="help" id="rxchoicehelp"></small></div>
+<div><label for="f_subscribe">Subscribe</label><select class="form-control" id="f_subscribe"><option value="auto">by properties</option><option value="indicate">indicate</option><option value="notify">notify</option></select><small class="help">Indicate: the relay confirms each value; notify: unconfirmed. By properties: indicate when offered, notify otherwise.</small></div>
+</div>
+<div class="bits" id="rxbits"></div>
+</div>
+
+<h5>Connection</h5>
+<div class="grid">
+<div><label for="f_policy">BLE connect</label><select class="form-control" id="f_policy"><option value="on_demand">on demand</option><option value="always">always</option></select><small class="help">On demand: with the first TCP client, until the idle time after the last one left. Always: while the relay is enabled.</small></div>
+<div><label for="f_idle">Idle disconnect, s</label><input class="form-control" id="f_idle" type="number" min="0"><small class="help" id="idlehelp"></small></div>
+<div><label for="f_coalesce">Coalescing, ms</label><input class="form-control" id="f_coalesce" type="number" min="0"><small class="help" id="coalescehelp"></small></div>
+<div><label for="f_oversize">Oversize</label><select class="form-control" id="f_oversize"><option value="chunk">chunk</option><option value="long_write">long write</option><option value="drop">drop</option></select><small class="help">TCP data longer than one write, the negotiated MTU - 3 bytes (the relay asks for 517, the most): chunk splits it into writes, long write sends it as one prepared write, drop discards it.</small></div>
+</div>
+<small class="help" id="backoffhelp"></small>
+
+<h4>Other</h4>
+<label class="check"><input type="checkbox" id="f_hexdump"> hexdump of the traffic in the log</label>
+<small class="help">Every TCP to BLE write and BLE to TCP value in the log as hex; fills the log fast.</small>
+
+<div class="alert alert-danger" id="fed4" hidden>FED4 is the HF-LPT270's AT-command characteristic: bytes written there are AT commands
+and can hang the module until a power cycle. Its data channel is TX FED5, RX FED6.</div>
+<div class="toolbar"><button type="button" class="btn btn-primary" id="saverule">Save</button><button type="button" class="btn" id="cancelrule">Cancel</button></div>
+<p id="rulemsg"></p>
+</div>
+</section>
+
+<section id="status" hidden>
+<div class="card">
+<h3>Relays</h3>
+<table class="table" id="relaystatus"></table>
+<p class="muted" id="relaystatusmsg"></p>
+</div>
+<div class="card">
+<h3>Device</h3>
+<table class="table" id="device"></table>
+</div>
+<div class="card">
+<div class="toolbar"><h3>WiFi</h3><a class="btn" href="/setup">WiFi settings</a></div>
+<table class="table" id="wifi"></table>
+</div>
+</section>
+
+<section id="log" hidden>
+<div class="card">
+<div class="toolbar">
+<h3>Log</h3>
+<label class="check"><input type="checkbox" id="follow" checked> follow</label>
+<button type="button" class="btn" id="pause">Pause</button>
+<button type="button" class="btn" id="clearlog">Clear view</button>
+</div>
+<pre class="console" id="logtext"></pre>
+</div>
+</section>
+
+<section id="config" hidden>
+<div class="card">
+<div class="toolbar"><h3>Configuration</h3><button type="button" class="btn" id="reload">Reload</button><a class="btn" href="/api/config/export">Export</a></div>
+<p class="muted">Read-only: the configuration the relay runs with, as in /config.json, without the WiFi password. The export holds the
+password in plain text.</p>
+<pre class="code" id="configtext"></pre>
+</div>
+<div class="card">
+<h3>Time zone</h3>
+<p class="muted">The local time of the log and the status; the clock itself comes from NTP. In use as soon as it is saved.</p>
+<div class="toolbar"><select class="form-control" id="tz"></select><button type="button" class="btn btn-primary" id="savetz">Save</button></div>
+<p id="tzmsg"></p>
+</div>
+<div class="card">
+<h3>Log and heartbeat</h3>
+<p class="muted">The lowest level the log keeps, and every how many seconds the health line goes into it; 0 switches the line off. In
+use as soon as saved.</p>
+<div class="toolbar"><label for="loglevel">Log level</label><select class="form-control" id="loglevel"></select><label for="heartbeat">Heartbeat every</label><input class="form-control" id="heartbeat" type="number" min="0" step="1"> s<button type="button" class="btn btn-primary" id="savedevice">Save</button></div>
+<p id="devicemsg"></p>
+</div>
+<div class="card">
+<h3>Battery</h3>
+<p class="muted">Type the battery's voltage as a multimeter shows it, and the relay scales its readings to match. Reset uses the
+divider's ratio alone. In use from the next reading.</p>
+<p id="batterynow"></p>
+<div class="toolbar"><label for="batteryv">Measured</label><input class="form-control" id="batteryv" type="number" min="0" step="0.01"> V<button type="button" class="btn btn-primary" id="calibrate">Calibrate</button><button type="button" class="btn" id="resetbattery">Reset</button></div>
+<p id="batterymsg"></p>
+</div>
+<div class="card">
+<h3>Import</h3>
+<p class="muted">Saves a configuration file on the relay and restarts it. Keys the file leaves out keep their current values; its
+"rules", when there, replace every relay rule.</p>
+<div class="toolbar"><input type="file" class="form-control" id="configfile" accept=".json,application/json"><button type="button" class="btn btn-danger" id="import">Import</button></div>
+<p id="importmsg"></p>
+</div>
+</section>
+
+<section id="firmware" hidden>
+<div class="card">
+<h3>Firmware update</h3>
+<table class="table" id="slots"></table>
+<div class="toolbar"><input type="file" class="form-control" id="file" accept=".bin"><button type="button" class="btn btn-primary" id="upload">Upload</button></div>
+<progress id="bar" max="1" value="0" hidden></progress>
+<p id="ota"></p>
+</div>
+<div class="card">
+<h3>Restart</h3>
+<p class="muted">Restarts the relay; this page picks it up again when it is back.</p>
+<button type="button" class="btn btn-danger" id="reboot">Restart</button>
+<p id="rebootmsg"></p>
+</div>
+</section>
+</main>
+<script src="ble-names.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+
+// One request to the relay at a time: each waits for the one before it, so the relay holds one answer for the page in flight.
+let turn = Promise.resolve();
+
+function inTurn(work)
+{
+	const run = turn.then(work);
+	turn = run.catch(() => {});
+
+	return run;
+}
+
+// Answers of the relay's JSON API, in turn; a refusal throws with its error text.
+function call(url, options)
+{
+	return inTurn(async () =>
+		{
+			const response = await fetch(url, options);
+			const body = await response.json().catch(() => ({}));
+
+			if (!response.ok)
+			{
+				throw new Error(body.error || 'HTTP ' + response.status);
+			}
+
+			return body;
+		});
+}
+
+// ---- Views
+
+const views = ['relays', 'status', 'log', 'config', 'firmware'];
+
+// The view named by the URL fragment; the relays without one.
+function currentView()
+{
+	const name = location.hash.slice(1);
+
+	return views.includes(name) ? name : 'relays';
+}
+
+function showView()
+{
+	const name = currentView();
+
+	for (const view of views)
+	{
+		$(view).hidden = view !== name;
+	}
+
+	for (const link of document.querySelectorAll('.navbar a'))
+	{
+		link.classList.toggle('active', link.getAttribute('href') === '#' + name);
+	}
+
+	if (name === 'relays')
+	{
+		loadRules();
+	}
+
+	if (name === 'config')
+	{
+		loadConfig();
+	}
+
+	if (name === 'status' || name === 'log')
+	{
+		pollView(name);
+	}
+}
+
+// ---- Relays
+
+// A new rule's keys and the limits of the fields, from GET /api/rules; null until it answered
+let ruleDefaults = null;
+
+let limits = null;
+
+// The GATT characteristic property bits, lowest first.
+const kProperties = ['broadcast', 'read', 'write without response', 'write', 'notify', 'indicate', 'authenticated signed writes', 'extended properties'];
+
+// What each mode of a channel does; auto is this form's, which saves what it picks in the probed service.
+const kModeHelp = {
+	tx: {
+		auto: 'Picked in the probed service when you save: the characteristic whose only property is write, else the first one with write. '
+			+ 'Never one that only writes without response; on the HF-LPT270 that is FED4, the AT-command channel.',
+		uuid: 'The characteristic chosen in the next field.',
+		none: 'No TX: the relay discards what the TCP clients send and passes only the device\'s values to them, a read-only relay.',
+	},
+	rx: {
+		auto: 'Picked in the probed service when you save: the characteristic whose only property is indicate, else the first one with indicate, '
+			+ 'else the first one with notify. Never one that can also be written; on the HF-LPT270 that is FED4.',
+		uuid: 'The characteristic chosen in the next field.',
+		none: 'No RX: the relay only writes what the TCP clients send, and they get nothing back, a write-only relay.',
+	},
+};
+
+let rules = [];
+
+// id of the rule in the form; null: a new one
+let editing = null;
+
+// the rule the form started from; the keys the form does not show keep its values
+let formBase = null;
+
+// the services of the device picked from the scan, with their characteristics; null: none read
+let gatt = null;
+
+// what the probes read, by device address: {services, info}, the services with their characteristics and infoOf() the values
+const probed = {};
+
+// Labels of the values a probe reads, in the order they are shown.
+const kInfoLabels = {
+	'2a00': 'name', '2a01': 'appearance', '2a29': 'manufacturer', '2a24': 'model', '2a25': 'serial number', '2a27': 'hardware',
+	'2a26': 'firmware', '2a28': 'software', '2a50': 'PnP ID',
+};
+
+// the devices of the last scan
+let scanned = [];
+
+const field = (name) => $('f_' + name);
+
+// The 16-bit UUID in uuid, lower case, in any form the relay takes: "fed4", "0000fed4" or the 128-bit one on the Bluetooth base; '' for
+// another UUID.
+function shortUuid(uuid)
+{
+	const u = (uuid || '').trim().toLowerCase();
+	const found = /^([0-9a-f]{4})$/.exec(u) || /^0000([0-9a-f]{4})(-0000-1000-8000-00805f9b34fb)?$/.exec(u);
+
+	return found ? found[1] : '';
+}
+
+// uuid is the 16-bit UUID short in any form the relay takes
+function isShortUuid(uuid, short)
+{
+	return shortUuid(uuid) === short;
+}
+
+// "180a Device Information": uuid with the Bluetooth SIG's name of it in names (web/ble-names.js), uuid alone without one
+function named(uuid, names)
+{
+	const name = names[shortUuid(uuid)];
+
+	return name ? uuid + ' ' + name : uuid;
+}
+
+// FED4 in any form the relay takes (lib/config/ConfigRules isAtCommandChannel)
+function isFed4(uuid)
+{
+	return isShortUuid(uuid, 'fed4');
+}
+
+// The preset shows for an HF-LPT270, by the name it advertises; its service FEE7 is Tencent's, which other devices use too.
+function syncPreset()
+{
+	const shown = field('target').value.trim() === 'HF-LPT270';
+	$('preset').hidden = !shown;
+	$('presethelp').hidden = !shown;
+}
+
+function channelText(channel)
+{
+	return channel.mode === 'uuid' ? named(channel.uuid, kBleCharacteristicNames) : channel.mode;
+}
+
+function element(tag, text, className)
+{
+	const node = document.createElement(tag);
+	node.textContent = text;
+	node.className = className;
+
+	return node;
+}
+
+function button(text, className, onclick)
+{
+	const node = element('button', text, className);
+	node.type = 'button';
+	node.onclick = onclick;
+
+	return node;
+}
+
+// One line per rule: name and flags, where it listens and what it reaches, then its buttons.
+function ruleRow(rule)
+{
+	const row = element('div', '', '');
+	const info = element('div', '', 'grow');
+	const t = rule.target;
+	const device = t.address ? t.address + (t.name ? ', ' + t.name : '') : 'the device named ' + t.name;
+	const flags = [rule.enabled ? '' : 'disabled', rule.hexdump ? 'hexdump' : ''];
+
+	info.appendChild(element('strong', rule.name || rule.id, ''));
+
+	for (const flag of flags.filter((f) => f))
+	{
+		info.appendChild(element('span', flag, 'badge'));
+	}
+
+	if (isFed4(rule.tx.uuid) || isFed4(rule.rx.uuid))
+	{
+		info.appendChild(element('span', 'FED4: AT-command channel', 'badge badge-danger'));
+	}
+
+	info.appendChild(element('small', 'port ' + rule.listen_port + ' to ' + device, ''));
+	info.appendChild(element('small', 'service ' + named(rule.service_uuid, kBleServiceNames) + ', TX ' + channelText(rule.tx) + ', RX ' + channelText(rule.rx) + ', '
+		+ rule.connect_policy.replace('_', ' '), ''));
+
+	const exportLink = element('a', 'Export', 'btn');
+	exportLink.href = '/api/rules/' + encodeURIComponent(rule.id) + '/export';
+
+	row.append(info, button(rule.enabled ? 'Disable' : 'Enable', 'btn', () => enableRule(rule, !rule.enabled)), button('Edit', 'btn', () => editRule(rule)),
+		exportLink, button('Remove', 'btn btn-danger', () => removeRule(rule)));
+
+	return row;
+}
+
+// Enabled rules are limited by the BLE connections the relay holds, stored ones by its file; the fields by lib/config/RuleConfig.
+function showLimits()
+{
+	const enabled = rules.filter((rule) => rule.enabled).length;
+
+	$('rulelimits').textContent = enabled + ' of at most ' + limits.enabled + ' enabled at a time; ' + rules.length + ' stored.';
+	$('enabledhelp').textContent = 'An enabled relay listens on its port and connects to its device; at most ' + limits.enabled + ' are enabled at a time.';
+	$('porthelp').textContent = 'The TCP port on the relay\'s address that clients connect to; a new relay takes the first free port from '
+		+ ruleDefaults.listen_port + ' up. Not ' + limits.web_port + ', the web page\'s.';
+	field('clients').max = limits.clients;
+	$('clientshelp').textContent = 'TCP clients at a time, 1 to ' + limits.clients + '; more are refused. Every client gets every value from BLE.';
+	field('idle').max = limits.idle_s;
+	$('idlehelp').textContent = 'With on demand: how long BLE stays connected after the last TCP client left, 0 to ' + limits.idle_s + '.';
+	field('coalesce').max = limits.coalesce_ms;
+	$('coalescehelp').textContent = 'TCP data is collected until this much silence, 0 to ' + limits.coalesce_ms + ', then written as one; 0 writes at '
+		+ 'once. Keeps one Modbus request in one write.';
+}
+
+async function loadRules()
+{
+	try
+	{
+		const answer = await call('/api/rules');
+		rules = answer.rules;
+		ruleDefaults = answer.defaults;
+		limits = answer.limits;
+		showLimits();
+	}
+	catch (e)
+	{
+		$('rulesmsg').textContent = 'Reading the rules failed: ' + e.message;
+		return;
+	}
+
+	const list = $('rulelist');
+	list.textContent = '';
+
+	for (const rule of rules)
+	{
+		list.appendChild(ruleRow(rule));
+	}
+
+	$('rulesmsg').textContent = rules.length ? '' : 'No relays yet.';
+}
+
+const bitOf = (name) => 1 << kProperties.indexOf(name);
+const hasFlag = (characteristic, name) => (characteristic.properties & bitOf(name)) !== 0;
+const onlyFlag = (characteristic, name) => characteristic.properties === bitOf(name);
+const flagNames = (characteristic) => kProperties.filter((name) => hasFlag(characteristic, name));
+
+// The characteristic Select automatically takes in list, as the relay does; undefined when none fits.
+function autoPick(channel, list)
+{
+	if (channel === 'tx')
+	{
+		return list.find((c) => onlyFlag(c, 'write')) || list.find((c) => hasFlag(c, 'write'));
+	}
+
+	const unwritable = list.filter((c) => !hasFlag(c, 'write') && !hasFlag(c, 'write without response'));
+
+	return unwritable.find((c) => onlyFlag(c, 'indicate')) || unwritable.find((c) => hasFlag(c, 'indicate')) || unwritable.find((c) => hasFlag(c, 'notify'));
+}
+
+function characteristicText(characteristic)
+{
+	const text = named(characteristic.uuid, kBleCharacteristicNames) + ': ' + flagNames(characteristic).join(', ');
+
+	return text + (isFed4(characteristic.uuid) ? ' (AT commands, never used)' : '');
+}
+
+// the characteristics of the service in the form, from the probed device; null when it was not read
+function serviceCharacteristics()
+{
+	const uuid = field('service').value.trim().toLowerCase();
+	const service = gatt && gatt.find((s) => s.uuid === uuid);
+
+	return service ? service.characteristics : null;
+}
+
+// Shows the pick list instead of the UUID field: one option per item, FED4 listed but not selectable, or emptyText alone without items.
+function fillPick(name, items, textOf, emptyText)
+{
+	const pick = $('f_' + name + 'pick');
+	pick.hidden = false;
+	field(name).hidden = true;
+	pick.textContent = '';
+
+	for (const item of items)
+	{
+		const option = element('option', textOf(item), '');
+		option.value = item.uuid;
+		option.disabled = isFed4(item.uuid);
+		pick.appendChild(option);
+	}
+
+	if (!items.length)
+	{
+		pick.appendChild(element('option', emptyText, ''));
+	}
+
+	return pick;
+}
+
+// Shows the UUID field instead of the pick list.
+function showInput(name)
+{
+	$('f_' + name + 'pick').hidden = true;
+	field(name).hidden = false;
+}
+
+// Picks in the pick list the UUID field's value, else fallback, else the first selectable item, and writes it into the UUID field.
+function choose(name, list, fallback)
+{
+	const input = field(name);
+	const usable = list.filter((item) => !isFed4(item.uuid));
+	const chosen = usable.find((item) => item.uuid === input.value.trim().toLowerCase()) || fallback || usable[0];
+	$('f_' + name + 'pick').value = chosen ? chosen.uuid : '';
+	input.value = chosen ? chosen.uuid : '';
+}
+
+// The eight property bits of characteristic as read-only checkboxes; without one all clear, and caption says why.
+function showBits(channel, characteristic, caption)
+{
+	const box = $(channel + 'bits');
+	box.textContent = '';
+	box.appendChild(element('span', 'Properties' + (characteristic ? ' of ' + characteristic.uuid : ', ' + caption) + ':', ''));
+
+	for (const name of kProperties)
+	{
+		const label = element('label', '', '');
+		const check = document.createElement('input');
+		check.type = 'checkbox';
+		check.disabled = true;
+		check.checked = Boolean(characteristic) && hasFlag(characteristic, name);
+		label.append(check, name);
+		box.appendChild(label);
+	}
+}
+
+// None: no characteristic; Select automatically: what it takes in the scanned service, read-only; Select manually: the list or the UUID.
+function syncChannel(channel, list)
+{
+	const mode = field(channel + 'mode').value;
+	const picked = list ? autoPick(channel, list) : undefined;
+	const help = $(channel + 'choicehelp');
+	$(channel + 'help').textContent = kModeHelp[channel][mode];
+	field(channel === 'tx' ? 'write' : 'subscribe').disabled = mode === 'none';
+
+	if (mode === 'none')
+	{
+		fillPick(channel, [], characteristicText, 'none').disabled = true;
+		help.textContent = 'This relay uses no ' + channel.toUpperCase() + ' characteristic.';
+		showBits(channel, undefined, 'no characteristic');
+		return;
+	}
+
+	if (mode === 'auto')
+	{
+		fillPick(channel, picked ? [picked] : [], characteristicText, list ? 'none: no characteristic of this service fits' : 'picked when the relay connects')
+			.disabled = true;
+		help.textContent = list ? 'What Select automatically takes in this service.'
+			: 'Known once the device is probed: Scan, then Probe or pick it. Without that, saving leaves it None.';
+		showBits(channel, picked, list ? 'none picked' : 'known once read from the device');
+		return;
+	}
+
+	if (!list)
+	{
+		showInput(channel);
+		help.textContent = 'The characteristic\'s UUID, 16-bit, 32-bit or 128-bit with dashes.';
+		showBits(channel, undefined, 'known once read from the device');
+		return;
+	}
+
+	fillPick(channel, list, characteristicText, 'none: this service has no characteristics').disabled = false;
+	choose(channel, list, picked);
+	help.textContent = 'The service\'s characteristics with their properties; FED4, the AT-command channel, cannot be chosen.';
+	showBits(channel, list.find((c) => c.uuid === field(channel).value), 'none chosen');
+}
+
+// The service and characteristic fields follow the probed device and the modes; the FED4 warning follows what the form would save.
+function syncChannels()
+{
+	if (gatt)
+	{
+		fillPick('service', gatt, (s) => named(s.uuid, kBleServiceNames) + ', ' + s.characteristics.length + ' characteristics', 'no services');
+		choose('service', gatt, undefined);
+	}
+	else
+	{
+		showInput('service');
+	}
+
+	const list = serviceCharacteristics();
+	syncChannel('tx', list);
+	syncChannel('rx', list);
+	$('fed4').hidden = !['tx', 'rx'].some((channel) => field(channel + 'mode').value === 'uuid' && isFed4(field(channel).value));
+}
+
+function fillForm(rule)
+{
+	field('name').value = rule.name;
+	field('port').value = rule.listen_port;
+	field('clients').value = rule.max_clients;
+	field('address').value = rule.target.address;
+	field('target').value = rule.target.name;
+	field('service').value = rule.service_uuid;
+	field('txmode').value = rule.tx.mode;
+	field('tx').value = rule.tx.uuid;
+	field('write').value = rule.tx.write_with_response ? 'with' : 'without';
+	field('rxmode').value = rule.rx.mode;
+	field('rx').value = rule.rx.uuid;
+	field('subscribe').value = rule.rx.subscribe;
+	field('coalesce').value = rule.coalesce_ms;
+	field('oversize').value = rule.oversize;
+	field('policy').value = rule.connect_policy;
+	field('idle').value = rule.idle_s;
+	field('enabled').checked = rule.enabled;
+	field('close').checked = rule.close_tcp_on_ble_loss;
+	field('hexdump').checked = rule.hexdump;
+	$('backoffhelp').textContent = 'Reconnect waits: ' + rule.reconnect_backoff_s.join(', ') + ' s, the last one repeating; reconnect_backoff_s in the '
+		+ 'rule\'s JSON changes them.';
+	syncChannels();
+	syncPreset();
+}
+
+// A whole number as a number; anything else as the text it is, so the relay's answer names the field.
+function wholeNumber(text)
+{
+	const trimmed = String(text).trim();
+
+	return trimmed !== '' && Number.isInteger(Number(trimmed)) ? Number(trimmed) : trimmed;
+}
+
+// The channels Select automatically finds nothing for in the probed service, or in none when the device was not probed.
+function unresolvedChannels()
+{
+	return ['tx', 'rx'].filter((channel) => field(channel + 'mode').value === 'auto' && !autoPick(channel, serviceCharacteristics() || []));
+}
+
+// A channel's mode and UUID as saved: Select automatically as the characteristic it picks, or none.
+function savedChannel(channel)
+{
+	const mode = field(channel + 'mode').value;
+
+	if (mode === 'auto')
+	{
+		const picked = autoPick(channel, serviceCharacteristics() || []);
+
+		return picked ? { mode: 'uuid', uuid: picked.uuid } : { mode: 'none', uuid: '' };
+	}
+
+	return { mode, uuid: mode === 'uuid' ? field(channel).value.trim() : '' };
+}
+
+// The rule as the form shows it over formBase, the channels as savedChannel() gives them.
+function formRule()
+{
+	return {
+		...formBase,
+		name: field('name').value,
+		enabled: field('enabled').checked,
+		listen_port: wholeNumber(field('port').value),
+		max_clients: wholeNumber(field('clients').value),
+		target: { address: field('address').value.trim(), name: field('target').value },
+		service_uuid: field('service').value.trim(),
+		tx: { ...savedChannel('tx'), write_with_response: field('write').value === 'with' },
+		rx: { ...savedChannel('rx'), subscribe: field('subscribe').value },
+		coalesce_ms: wholeNumber(field('coalesce').value),
+		oversize: field('oversize').value,
+		connect_policy: field('policy').value,
+		idle_s: wholeNumber(field('idle').value),
+		close_tcp_on_ble_loss: field('close').checked,
+		hexdump: field('hexdump').checked,
+	};
+}
+
+// The first port from the default's on that no rule listens on.
+function freePort()
+{
+	let port = ruleDefaults.listen_port;
+
+	while (rules.some((rule) => rule.listen_port === port))
+	{
+		++port;
+	}
+
+	return port;
+}
+
+// The first "Relay N" from 1 on that no rule is named.
+function freeName()
+{
+	let number = 1;
+
+	while (rules.some((rule) => rule.name === 'Relay ' + number))
+	{
+		++number;
+	}
+
+	return 'Relay ' + number;
+}
+
+function ruleName(rule)
+{
+	return rule.name || rule.id;
+}
+
+// A new rule, once the relay's defaults are known.
+function addRule()
+{
+	if (ruleDefaults)
+	{
+		editRule(null);
+	}
+}
+
+// rule: the one to edit (PUT /api/rules/{id}); null: a new one.
+function editRule(rule)
+{
+	editing = rule ? rule.id : null;
+	// a new rule's channels start as Select automatically, a mode of this form alone
+	formBase = rule || { ...ruleDefaults, name: freeName(), listen_port: freePort(), tx: { ...ruleDefaults.tx, mode: 'auto' },
+		rx: { ...ruleDefaults.rx, mode: 'auto' } };
+	gatt = (rule && probed[rule.target.address] && probed[rule.target.address].services) || null;
+	fillForm(formBase);
+	$('scanlist').textContent = '';
+	$('scanmsg').textContent = '';
+	$('formtitle').textContent = editing === null ? 'Add relay' : 'Edit ' + ruleName(rule);
+	$('rulemsg').textContent = '';
+	$('ruleform').hidden = false;
+	$('ruleform').scrollIntoView();
+}
+
+// The HF-LPT270's data channel: service FEE7, TX FED5 written with response, RX FED6 by indication. Never FED4.
+function applyPreset()
+{
+	field('service').value = 'fee7';
+	field('txmode').value = 'uuid';
+	field('tx').value = 'fed5';
+	field('write').value = 'with';
+	field('rxmode').value = 'uuid';
+	field('rx').value = 'fed6';
+	field('subscribe').value = 'indicate';
+	syncChannels();
+}
+
+// Starts a scan of the relay's default length, then passes show the devices found so far and that length every second until it ends;
+// the last list, or throws.
+async function scanDevices(show)
+{
+	const started = await call('/api/ble/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+	let result;
+
+	do
+	{
+		await wait(1000);
+		result = await call('/api/ble/scan/results');
+		show(result.devices, started.seconds);
+	}
+	while (result.state === 'requested' || result.state === 'running');
+
+	// the page keeps the list, so the relay frees its copy; a failed clear only keeps that memory in use until the next scan
+	await call('/api/ble/scan/clear', { method: 'POST' }).catch(() => null);
+
+	if (result.state !== 'done')
+	{
+		throw new Error('the scan did not start or ended early; the relay\'s log has the reason');
+	}
+
+	return result.devices;
+}
+
+// the name the device advertises, else the one a probe read
+function nameOf(device)
+{
+	const entry = probed[device.address];
+
+	return device.name || (entry && entry.info['2a00']) || '';
+}
+
+function deviceName(device)
+{
+	return nameOf(device) || device.address;
+}
+
+const hex4 = (n) => n.toString(16).padStart(4, '0');
+
+// The Bluetooth SIG's name of an appearance, 16 bits little-endian: its own, else its category's; '' for Unknown.
+function appearanceText(bytes)
+{
+	const value = bytes.length >= 2 ? bytes[0] | (bytes[1] << 8) : 0;
+
+	return value ? kBleAppearanceNames[hex4(value)] || kBleAppearanceNames[hex4(value & 0xffc0)] || '0x' + hex4(value) : '';
+}
+
+// A PnP ID: vendor id source, vendor id, product id, product version, the last three 16 bits little-endian.
+function pnpText(bytes)
+{
+	if (bytes.length < 7)
+	{
+		return '';
+	}
+
+	const word = (at) => hex4(bytes[at] | (bytes[at + 1] << 8));
+	const source = { 1: 'Bluetooth', 2: 'USB' }[bytes[0]] || 'source ' + bytes[0];
+
+	return source + ' vendor 0x' + word(1) + ', product 0x' + word(3) + ', version 0x' + word(5);
+}
+
+// The values a probe read, from their hex: label id -> text, the strings as UTF-8 up to a NUL.
+function infoOf(values)
+{
+	const info = {};
+
+	for (const value of values || [])
+	{
+		const id = shortUuid(value.uuid);
+		const bytes = (value.value.match(/../g) || []).map((pair) => parseInt(pair, 16));
+		const decoded = { '2a01': appearanceText, '2a50': pnpText }[id];
+		const text = decoded ? decoded(bytes) : new TextDecoder().decode(new Uint8Array(bytes)).split('\0')[0].trim();
+
+		if (text)
+		{
+			info[id] = text;
+		}
+	}
+
+	return info;
+}
+
+// "name Pixel 8, manufacturer Google, ...", the values in the order of kInfoLabels
+function infoText(info)
+{
+	return Object.keys(kInfoLabels).filter((id) => info[id]).map((id) => kInfoLabels[id] + ' ' + info[id]).join(', ');
+}
+
+// "Google Pixel 8 (Phone)", for a scan row
+function infoSummary(info)
+{
+	const maker = [info['2a29'], info['2a24']].filter(Boolean).join(' ');
+
+	return info['2a01'] ? (maker ? maker + ' (' + info['2a01'] + ')' : info['2a01']) : maker;
+}
+
+// Greys the device, service and channel fields out while a scan or probe runs; the message and its spinner stay on top.
+function setBusy(busy)
+{
+	$('blezone').classList.toggle('busy', busy);
+	$('blescan').disabled = busy;
+}
+
+// "3 services, 7 characteristics" of a table the relay read
+function tableText(services)
+{
+	const count = services.reduce((sum, service) => sum + service.characteristics.length, 0);
+
+	return services.length + ' services, ' + count + ' characteristics';
+}
+
+// Asks the relay to probe device, a scan result, then passes show its state every second until it ends; what it read, or throws.
+async function probeDevice(device, show)
+{
+	const address = device.address;
+	const body = JSON.stringify({ address, address_type: device.address_type, connectable: device.connectable });
+	await call('/api/ble/discover', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+	let result;
+
+	do
+	{
+		await wait(1000);
+		result = await call('/api/ble/discover/result');
+		show(result.state);
+	}
+	while (result.state === 'requested' || result.state === 'connecting' || result.state === 'reading');
+
+	if (result.address !== address)
+	{
+		throw new Error('a probe of ' + result.address + ' came after it; probe again');
+	}
+
+	if (result.state !== 'done')
+	{
+		throw new Error('no connection, or its table was not read; the relay\'s log has the reason');
+	}
+
+	probed[address] = { services: result.services, info: infoOf(result.values) };
+
+	return probed[address];
+}
+
+// The form takes a probe's services, and the name it read when the device advertises none.
+function applyProbe(device, entry)
+{
+	gatt = entry.services;
+	field('target').value = nameOf(device);
+	syncChannels();
+	syncPreset();
+}
+
+// What a probe of device read, for the message: "name Pixel 8, manufacturer Google; 9 services, 38 characteristics"
+function probeText(entry)
+{
+	const info = infoText(entry.info);
+
+	return (info ? info + '; ' : '') + tableText(entry.services);
+}
+
+// Fills the address and the name from a scan result, and the service when the device advertises exactly one; then the device's services
+// and characteristics, probed now unless they were before.
+async function pickDevice(device)
+{
+	const say = (text) => { $('scanmsg').textContent = 'Picked ' + deviceName(device) + text; };
+	field('address').value = device.address;
+	field('target').value = nameOf(device);
+
+	if (device.services.length === 1)
+	{
+		field('service').value = device.services[0];
+	}
+
+	$('scanlist').textContent = '';
+	gatt = probed[device.address] ? probed[device.address].services : null;
+	syncChannels();
+	syncPreset();
+
+	if (gatt)
+	{
+		say(': ' + probeText(probed[device.address]) + '.');
+		return;
+	}
+
+	if (!device.connectable)
+	{
+		say('; it accepts no connection, so it cannot be probed. Enter the service and the characteristics.');
+		return;
+	}
+
+	setBusy(true);
+	say('; probing it...');
+
+	try
+	{
+		const entry = await probeDevice(device, (state) => say('; probing it: ' + state + '...'));
+
+		// the form may show another device by now
+		if (field('address').value.trim().toLowerCase() === device.address)
+		{
+			applyProbe(device, entry);
+		}
+
+		say(': ' + probeText(entry) + '.');
+	}
+	catch (e)
+	{
+		say('; probing it failed: ' + e.message + '. Enter the service and the characteristics' + ($('preset').hidden ? '.' : ', or use the preset.'));
+	}
+
+	setBusy(false);
+}
+
+// Probes device from its row; the list waits meanwhile.
+async function probeRow(device)
+{
+	const say = (text) => { $('scanmsg').textContent = text; };
+	setBusy(true);
+	listDevices(scanned, false);
+	say('Probing ' + deviceName(device) + '...');
+
+	try
+	{
+		const entry = await probeDevice(device, (state) => say('Probing ' + deviceName(device) + ': ' + state + '...'));
+		say(deviceName(device) + ': ' + probeText(entry) + '. Pick a device, or probe another:');
+	}
+	catch (e)
+	{
+		say('Probing ' + deviceName(device) + ' failed: ' + e.message + '.');
+	}
+
+	listDevices(scanned, true);
+	setBusy(false);
+}
+
+// pickable: a click picks the device, its Probe button probes it; a device that accepts no connection is greyed out, neither
+function deviceRow(device, pickable)
+{
+	const row = element('div', '', !pickable ? 'waiting' : device.connectable ? '' : 'disabled');
+	const services = device.services.length ? ', ' + device.services.map((uuid) => named(uuid, kBleServiceNames)).join(', ') : '';
+	const entry = probed[device.address];
+	const summary = entry ? infoSummary(entry.info) : '';
+	const table = entry ? ', probed: ' + (summary ? summary + ', ' : '') + entry.services.length + ' services' : '';
+	const connectable = device.connectable ? '' : ', not connectable';
+
+	row.append(element('div', (nameOf(device) || '(no name)') + ' ' + device.address, ''),
+		element('span', device.rssi + ' dBm' + connectable + services + table, ''));
+
+	if (pickable)
+	{
+		const probe = button('Probe', 'btn', (event) => { event.stopPropagation(); probeRow(device); });
+		probe.disabled = !device.connectable;
+		row.title = device.connectable ? '' : 'The device accepts no connection';
+		row.onclick = device.connectable ? () => pickDevice(device) : null;
+		row.appendChild(probe);
+	}
+
+	return row;
+}
+
+// Strongest first as the relay sends them, the devices that accept no connection last; the sort keeps the order within each.
+function listDevices(devices, pickable)
+{
+	const list = $('scanlist');
+	list.textContent = '';
+
+	for (const device of [...devices].sort((a, b) => Number(b.connectable) - Number(a.connectable)))
+	{
+		list.appendChild(deviceRow(device, pickable));
+	}
+}
+
+// The devices found while the scan of seconds runs, not pickable yet.
+function showFound(devices, seconds)
+{
+	listDevices(devices, false);
+	$('scanmsg').textContent = 'Scanning for ' + seconds + ' s... found ' + devices.length + ' so far.';
+}
+
+async function scanBle()
+{
+	$('scanlist').textContent = '';
+	setBusy(true);
+	$('scanmsg').textContent = 'Scanning...';
+
+	try
+	{
+		scanned = await scanDevices(showFound);
+		listDevices(scanned, true);
+		$('scanmsg').textContent = scanned.length ? 'Found ' + scanned.length + ', strongest first, not connectable last. Probe one, or pick one:'
+			: 'No devices found.';
+	}
+	catch (e)
+	{
+		$('scanmsg').textContent = 'Scan: ' + e.message;
+	}
+
+	setBusy(false);
+}
+
+// Sends a change and follows its save on the relay: 'saved', or the text that says why not.
+async function sendChange(url, options)
+{
+	try
+	{
+		await call(url, options);
+	}
+	catch (e)
+	{
+		return 'Not saved: ' + e.message;
+	}
+
+	try
+	{
+		return (await followSave()) === 'saved' ? 'saved' : 'Saving failed on the relay; its log has the reason.';
+	}
+	catch (e)
+	{
+		return 'The relay stopped answering: ' + e.message;
+	}
+}
+
+async function saveRule()
+{
+	const unresolved = unresolvedChannels().map((channel) => channel.toUpperCase()).join('/');
+
+	if (unresolved && !confirm('Cannot resolve the ' + unresolved + ' channel automatically, it will be None. Continue?'))
+	{
+		return;
+	}
+
+	const rule = formRule();
+	const url = editing === null ? '/api/rules' : '/api/rules/' + encodeURIComponent(editing);
+	const options = { method: editing === null ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rule) };
+
+	$('rulemsg').textContent = 'Saving...';
+	const result = await sendChange(url, options);
+
+	if (result !== 'saved')
+	{
+		$('rulemsg').textContent = result;
+		return;
+	}
+
+	$('ruleform').hidden = true;
+	await loadRules();
+	$('rulesmsg').textContent = 'Saved ' + (rule.name || 'the relay') + '.';
+}
+
+// Saves rule with enabled flipped; disabling drops its BLE link and TCP clients at once.
+async function enableRule(rule, enabled)
+{
+	const options = { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...rule, enabled }) };
+
+	$('rulesmsg').textContent = (enabled ? 'Enabling ' : 'Disabling ') + ruleName(rule) + '...';
+	const result = await sendChange('/api/rules/' + encodeURIComponent(rule.id), options);
+	await loadRules();
+	$('rulesmsg').textContent = result === 'saved' ? ruleName(rule) + (enabled ? ' enabled.' : ' disabled.') : result;
+}
+
+async function removeRule(rule)
+{
+	if (!confirm('Remove ' + ruleName(rule) + ' from the relay\'s configuration?'))
+	{
+		return;
+	}
+
+	const result = await sendChange('/api/rules/' + encodeURIComponent(rule.id), { method: 'DELETE' });
+
+	if (editing === rule.id)
+	{
+		$('ruleform').hidden = true;
+	}
+
+	await loadRules();
+	$('rulesmsg').textContent = result === 'saved' ? 'Removed ' + ruleName(rule) + '.' : result;
+}
+
+// ---- Status
+
+function uptime(seconds)
+{
+	const d = Math.floor(seconds / 86400);
+	const h = Math.floor(seconds % 86400 / 3600);
+	const m = Math.floor(seconds % 3600 / 60);
+	const s = seconds % 60;
+	const two = (n) => String(n).padStart(2, '0');
+
+	return (d ? d + ' d ' : '') + two(h) + ':' + two(m) + ':' + two(s);
+}
+
+function kb(bytes)
+{
+	return Math.round(bytes / 1024) + ' KB';
+}
+
+// A 3.7 V lithium-ion cell at rest, [mV, %] every 5 %, the highest first: flat from 3.75 to 3.85 V, steep at both ends.
+const kBatteryCurve = [
+	[4200, 100], [4150, 95], [4110, 90], [4080, 85], [4020, 80], [3980, 75], [3950, 70], [3910, 65], [3870, 60], [3850, 55], [3840, 50],
+	[3820, 45], [3800, 40], [3790, 35], [3770, 30], [3750, 25], [3730, 20], [3710, 15], [3690, 10], [3610, 5], [3270, 0],
+];
+
+// An estimate: charging raises the voltage, a load lowers it.
+function batteryPercent(millivolts)
+{
+	if (millivolts >= kBatteryCurve[0][0])
+	{
+		return kBatteryCurve[0][1];
+	}
+
+	for (let i = 1; i < kBatteryCurve.length; ++i)
+	{
+		const [upperMv, upperPercent] = kBatteryCurve[i - 1];
+		const [lowerMv, lowerPercent] = kBatteryCurve[i];
+
+		if (millivolts >= lowerMv)
+		{
+			return Math.round(lowerPercent + (upperPercent - lowerPercent) * (millivolts - lowerMv) / (upperMv - lowerMv));
+		}
+	}
+
+	return 0;
+}
+
+function batteryText(millivolts)
+{
+	return millivolts ? (millivolts / 1000).toFixed(2) + ' V, about ' + batteryPercent(millivolts) + ' %' : 'no battery';
+}
+
+function ago(seconds)
+{
+	if (seconds < 60)
+	{
+		return seconds + ' s';
+	}
+
+	if (seconds < 3600)
+	{
+		return Math.floor(seconds / 60) + ' min';
+	}
+
+	return Math.floor(seconds / 3600) + ' h ' + Math.floor(seconds % 3600 / 60) + ' min';
+}
+
+function fill(id, rows)
+{
+	const table = $(id);
+	table.textContent = '';
+
+	for (const [label, value] of rows)
+	{
+		const row = table.insertRow();
+		const head = document.createElement('th');
+
+		head.textContent = label;
+		row.appendChild(head);
+		row.insertCell().textContent = value;
+	}
+}
+
+function show(status)
+{
+	const d = status.device;
+	const w = status.wifi;
+	const o = status.ota;
+	const t = status.time;
+	const firmware = ['Firmware', d.firmware + ', built ' + d.built];
+	const running = ['Current app slot', o.running + ' (' + o.running_state + ')'];
+	const other = ['OTA app slot', o.other + ' (' + o.other_state + ')'];
+
+	$('host').textContent = d.hostname;
+	document.title = 'w2b ' + d.hostname;
+
+	fill('device', [
+		['Hostname', d.hostname],
+		firmware,
+		['Chip', d.chip],
+		['BLE address', d.ble_address ? d.ble_address + ' (' + d.ble_address_type + ')' : 'NimBLE is not running'],
+		['Uptime', uptime(d.uptime_s)],
+		['Time', (t.local || 'not set yet') + ' (' + t.timezone + ')'],
+		['Clock', t.synced ? 'NTP, last sync ' + ago(t.last_sync_s) + ' ago' : 'waiting for NTP'],
+		['Heap free', kb(d.heap_free) + ' (lowest ' + kb(d.heap_min_free) + ', largest block ' + kb(d.heap_largest) + ')'],
+		['Battery', batteryText(d.battery_mv)],
+	]);
+
+	fill('wifi', [
+		['Network', w.ssid + (w.connected ? '' : ' (not connected)')],
+		['Address', w.address + ' / ' + w.mask],
+		['Gateway', w.gateway],
+		['DNS', w.dns],
+		['Signal', w.rssi + ' dBm, channel ' + w.channel],
+		['Access point', w.bssid],
+		['MAC', w.mac],
+	]);
+
+	fill('slots', [firmware, running, other]);
+	fill('relaystatus', status.relays.map((relay) => [relay.name || relay.id, relayText(relay)]));
+	$('relaystatusmsg').textContent = status.relays.length ? '' : 'No relays yet.';
+}
+
+// A relay's BLE link as one line: its state, then what is known of it, then why the last attempt failed.
+// A relay as one line: its BLE link, its TCP clients, the traffic each way, then what went wrong.
+function relayText(relay)
+{
+	const up = relay.state === 'up';
+	const on = relay.state !== 'disabled';
+	const parts = [
+		relay.state,
+		up ? uptime(relay.up_s) : '',
+		relay.address,
+		relay.mtu ? 'MTU ' + relay.mtu : '',
+		relay.rssi ? (up ? '' : 'last ') + relay.rssi + ' dBm' : '',
+		!on ? '' : relay.clients.length ? 'TCP ' + relay.clients.join(', ') : relay.listening ? 'no TCP client' : 'not listening',
+		relay.rx_frames ? 'BLE to TCP ' + relay.rx_frames + ' frames, ' + relay.rx_bytes + ' B in, ' + relay.tcp_tx_bytes + ' B out' : '',
+		relay.rx_dropped ? relay.rx_dropped + ' missed' : '',
+		relay.tcp_rx_bytes ? 'TCP to BLE ' + relay.tcp_rx_bytes + ' B, ' + relay.ble_tx_writes + ' writes' : '',
+		relay.tx_dropped ? relay.tx_dropped + ' B dropped' : '',
+		relay.oversize_events ? relay.oversize_events + ' too long' : '',
+		relay.reconnects ? relay.reconnects + ' reconnects' : '',
+	];
+	const problems = [relay.error, relay.tcp_error].filter((problem) => problem);
+
+	return parts.filter((part) => part).join(', ') + (problems.length ? '; ' + problems.join('; ') : '');
+}
+
+function alarm(text)
+{
+	$('msg').textContent = text;
+	$('msg').hidden = !text;
+}
+
+// While an upload runs the page stays as it is: every request costs the relay a connection beside the upload.
+let uploading = false;
+
+async function refresh()
+{
+	if (uploading)
+	{
+		return;
+	}
+
+	try
+	{
+		const status = await call('/api/status');
+		show(status);
+		alarm('');
+		noticeRestart(status);
+	}
+	catch (e)
+	{
+		alarm('No answer from the relay: ' + e.message);
+	}
+}
+
+// ---- Restarts the page asked for (firmware, import, restart)
+
+// Uptime seen when the restart was asked for and what to do once the relay is back; the restart shows as a smaller uptime.
+let restart = null;
+let lastUptime = 0;
+
+// Slot the verified upload went to, until the new image runs there confirmed; after a rollback the firmware section keeps its text.
+let newSlot = null;
+
+function expectRestart(done)
+{
+	restart = { after: lastUptime + 1, done };
+	wakePoll();
+}
+
+function noticeRestart(status)
+{
+	const o = status.ota;
+
+	if (restart !== null && status.device.uptime_s < restart.after)
+	{
+		const done = restart.done;
+		restart = null;
+		done(status);
+	}
+
+	if (restart === null && newSlot !== null && o.running === newSlot && o.running_state === 'valid')
+	{
+		clearUpdate();
+		newSlot = null;
+	}
+
+	lastUptime = status.device.uptime_s;
+}
+
+// ---- Log
+
+// Offset of the next byte to fetch and the boot it belongs to; null: the next fetch takes the relay's whole ring.
+let logNext = null;
+let logBoot = null;
+let logPaused = false;
+let logBusy = false;
+
+// The view keeps the newest 64 K characters; the relay holds far less in its ring.
+const kLogViewChars = 65536;
+
+function appendLog(text)
+{
+	const box = $('logtext');
+	box.textContent = (box.textContent + text).slice(-kLogViewChars);
+
+	if ($('follow').checked)
+	{
+		box.scrollTop = box.scrollHeight;
+	}
+}
+
+async function fetchLog()
+{
+	const { response, text } = await inTurn(async () =>
+		{
+			const response = await fetch('/api/log' + (logNext === null ? '' : '?since=' + logNext));
+			const text = response.ok ? await response.text() : '';
+
+			return { response, text };
+		});
+
+	if (!response.ok)
+	{
+		throw new Error('HTTP ' + response.status);
+	}
+
+	const boot = response.headers.get('X-Log-Boot');
+	const from = Number(response.headers.get('X-Log-From'));
+
+	// Offsets of an earlier boot mean nothing now: start over with the whole ring.
+	if (logBoot !== null && boot !== logBoot)
+	{
+		appendLog('--- the relay restarted ---\n');
+		logBoot = boot;
+		logNext = null;
+		return fetchLog();
+	}
+
+	if (logNext !== null && from > logNext)
+	{
+		appendLog('--- ' + (from - logNext) + ' bytes the relay no longer holds ---\n');
+	}
+
+	appendLog(text);
+	logBoot = boot;
+	logNext = Number(response.headers.get('X-Log-Next'));
+}
+
+async function pollLog()
+{
+	if (logBusy || logPaused || uploading)
+	{
+		return;
+	}
+
+	logBusy = true;
+
+	try
+	{
+		await fetchLog();
+	}
+	catch (e)
+	{
+		// the status refresh reports a missing relay
+	}
+
+	logBusy = false;
+}
+
+function pauseLog()
+{
+	logPaused = !logPaused;
+	$('pause').textContent = logPaused ? 'Resume' : 'Pause';
+	pollLog();
+}
+
+// ---- Configuration
+
+async function loadConfig()
+{
+	let config;
+
+	try
+	{
+		config = await call('/api/config');
+		$('configtext').textContent = JSON.stringify(config, null, 2);
+	}
+	catch (e)
+	{
+		$('configtext').textContent = 'Reading the configuration failed: ' + e.message;
+		return;
+	}
+
+	try
+	{
+		await loadZones();
+		$('tz').value = config.device.timezone;
+	}
+	catch (e)
+	{
+		$('tzmsg').textContent = 'Reading the time zones failed: ' + e.message;
+	}
+
+	try
+	{
+		await loadDevice();
+	}
+	catch (e)
+	{
+		$('devicemsg').textContent = 'Reading the log level and heartbeat failed: ' + e.message;
+	}
+}
+
+// The level names and the heartbeat limit come from the relay, so the page repeats none of its values.
+async function loadDevice()
+{
+	const device = await call('/api/config/device');
+	const select = $('loglevel');
+	select.innerHTML = '';
+
+	for (const level of device.levels)
+	{
+		const option = document.createElement('option');
+		option.value = level;
+		option.textContent = level;
+		select.appendChild(option);
+	}
+
+	select.value = device.log_level;
+	$('heartbeat').value = device.heartbeat_s;
+	$('heartbeat').max = device.limits.heartbeat_s;
+
+	$('batterynow').textContent = 'The relay reads ' + batteryText(device.battery_mv) + ', scale ' + (device.battery_scale_ppm / 1e6).toFixed(4) + '.';
+}
+
+// millivolts: the battery's actual voltage, as a multimeter shows it; 0 resets the scale.
+async function calibrateBattery(millivolts)
+{
+	const say = (text) => { $('batterymsg').textContent = text; };
+
+	say('Saving...');
+
+	try
+	{
+		await call('/api/config/battery', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ millivolts }) });
+		say((await followSave()) === 'saved' ? 'Saved; in use from the next reading.' : 'Saving failed on the relay; its log has the reason.');
+	}
+	catch (e)
+	{
+		say('Not saved: ' + e.message);
+	}
+
+	loadConfig();
+}
+
+function calibrateToMeasured()
+{
+	const volts = Number($('batteryv').value);
+
+	if (!(volts > 0))
+	{
+		$('batterymsg').textContent = 'Type the voltage the multimeter shows first.';
+		return;
+	}
+
+	calibrateBattery(Math.round(volts * 1000));
+}
+
+async function saveDevice()
+{
+	const say = (text) => { $('devicemsg').textContent = text; };
+	const body = { log_level: $('loglevel').value, heartbeat_s: Number($('heartbeat').value) };
+
+	say('Saving...');
+
+	try
+	{
+		await call('/api/config/device', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+		say((await followSave()) === 'saved' ? 'Saved; in use.' : 'Saving failed on the relay; its log has the reason.');
+	}
+	catch (e)
+	{
+		say('Not saved: ' + e.message);
+	}
+
+	loadConfig();
+}
+
+let zonesLoaded = false;
+
+// Once per page: the relay's zone table, grouped by region (the part of the name before the first slash); UTC first, on its own.
+async function loadZones()
+{
+	if (zonesLoaded)
+	{
+		return;
+	}
+
+	const select = $('tz');
+	const groups = {};
+
+	for (const name of (await call('/api/timezones')).zones)
+	{
+		const slash = name.indexOf('/');
+		const option = document.createElement('option');
+		option.value = name;
+		option.textContent = name.slice(slash + 1).replace(/_/g, ' ');
+
+		if (slash < 0)
+		{
+			select.insertBefore(option, select.firstChild);
+			continue;
+		}
+
+		const region = name.slice(0, slash);
+
+		if (!groups[region])
+		{
+			groups[region] = document.createElement('optgroup');
+			groups[region].label = region;
+			select.appendChild(groups[region]);
+		}
+
+		groups[region].appendChild(option);
+	}
+
+	zonesLoaded = true;
+}
+
+// Follows the relay's save of an accepted change: 'saved' or 'failed'; throws when the relay stops answering.
+async function followSave()
+{
+	let result;
+
+	do
+	{
+		await wait(300);
+		result = await call('/api/config/save');
+	}
+	while (result.save === 'pending');
+
+	return result.save;
+}
+
+async function saveTimeZone()
+{
+	const say = (text) => { $('tzmsg').textContent = text; };
+	const zone = $('tz').value;
+
+	say('Saving...');
+
+	try
+	{
+		await call('/api/config/timezone', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ timezone: zone }) });
+		say((await followSave()) === 'saved' ? 'Saved; ' + zone + ' is in use.' : 'Saving failed on the relay; its log has the reason.');
+	}
+	catch (e)
+	{
+		say('Not saved: ' + e.message);
+	}
+
+	loadConfig();
+	refresh();
+}
+
+async function readConfigFile(file)
+{
+	const text = await file.text();
+	JSON.parse(text);
+
+	return text;
+}
+
+// The relay checks the file and saves it on its own thread; the page follows the save, then the restart.
+async function importConfig()
+{
+	const say = (text) => { $('importmsg').textContent = text; };
+	const file = $('configfile').files[0];
+
+	if (!file)
+	{
+		say('Choose a configuration .json first.');
+		return;
+	}
+
+	let text;
+
+	try
+	{
+		text = await readConfigFile(file);
+	}
+	catch (e)
+	{
+		say('Not a JSON file: ' + e.message);
+		return;
+	}
+
+	if (!confirm('Save ' + file.name + ' as the relay\'s configuration and restart the relay?'))
+	{
+		return;
+	}
+
+	try
+	{
+		await call('/api/config/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text });
+	}
+	catch (e)
+	{
+		say('Not imported: ' + e.message);
+		return;
+	}
+
+	say('Saving...');
+	const back = () => { say('Back with the imported configuration.'); $('configfile').value = ''; loadConfig(); };
+	let result;
+
+	try
+	{
+		result = await followSave();
+	}
+	catch (e)
+	{
+		say('Saved, it seems: the relay stopped answering, as for its restart...');
+		expectRestart(back);
+		return;
+	}
+
+	if (result !== 'saved')
+	{
+		say('Saving failed on the relay; its log has the reason. The configuration stays as it was.');
+		return;
+	}
+
+	say('Saved; the relay restarts...');
+	expectRestart(back);
+}
+
+// ---- Firmware
+
+// The update is over: the section looks as it did when the page loaded.
+function clearUpdate()
+{
+	$('file').value = '';
+	$('bar').hidden = true;
+	$('bar').value = 0;
+	$('ota').textContent = '';
+}
+
+function showWritten(written, total)
+{
+	$('bar').value = written / total;
+	$('ota').textContent = 'Written ' + Math.floor(written * 100 / total) + ' % (' + written + ' of ' + total + ' bytes)';
+}
+
+// The bar follows the relay's count of flash bytes, not the browser's, every 2 s: each look is one more connection beside the upload.
+async function followProgress(total, sending)
+{
+	let done = false;
+	sending.catch(() => {}).then(() => { done = true; });
+
+	while (!done)
+	{
+		await wait(2000);
+
+		try
+		{
+			const progress = await call('/api/ota/progress');
+
+			if (!done && progress.state === 'receiving')
+			{
+				showWritten(progress.written, total);
+			}
+		}
+		catch (e)
+		{
+		}
+	}
+}
+
+async function upload()
+{
+	const file = $('file').files[0];
+
+	if (!file)
+	{
+		$('ota').textContent = 'Choose a firmware .bin first.';
+		return;
+	}
+
+	const form = new FormData();
+	form.append('firmware', file);
+
+	uploading = true;
+	$('upload').disabled = true;
+	$('bar').hidden = false;
+	showWritten(0, file.size);
+
+	const sending = fetch('/api/ota', { method: 'POST', body: form })
+		.then(async (response) => ({ ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) }));
+	await followProgress(file.size, sending);
+
+	try
+	{
+		const result = await sending;
+
+		if (!result.ok)
+		{
+			$('ota').textContent = 'Rejected: ' + (result.body.error || 'HTTP ' + result.status) + '. The running firmware stays.';
+		}
+		else
+		{
+			showWritten(result.body.written, file.size);
+			$('ota').textContent = 'Verified; OTA app slot ' + result.body.slot + ' boots next. The relay restarts...';
+			newSlot = result.body.slot;
+			expectRestart(backFromUpdate);
+		}
+	}
+	catch (e)
+	{
+		$('ota').textContent = 'Upload failed: the connection broke. The running firmware stays.';
+	}
+
+	uploading = false;
+	$('upload').disabled = false;
+}
+
+function backFromUpdate(status)
+{
+	const d = status.device;
+	const o = status.ota;
+
+	$('ota').textContent = 'Back: firmware ' + d.firmware + ', built ' + d.built + ', current app slot ' + o.running + ' ('
+		+ o.running_state + '); a new image confirms itself after ' + o.confirm_after_s + ' s.';
+}
+
+// ---- Restart
+
+async function reboot()
+{
+	const say = (text) => { $('rebootmsg').textContent = text; };
+
+	if (!confirm('Restart the relay?'))
+	{
+		return;
+	}
+
+	try
+	{
+		await call('/api/reboot', { method: 'POST' });
+		say('Restarting...');
+		expectRestart(() => say('Back after the restart.'));
+	}
+	catch (e)
+	{
+		say('Not restarted: ' + e.message);
+	}
+}
+
+$('addrule').onclick = addRule;
+$('preset').onclick = applyPreset;
+$('blescan').onclick = scanBle;
+$('saverule').onclick = saveRule;
+$('cancelrule').onclick = () => { $('ruleform').hidden = true; };
+$('f_target').oninput = syncPreset;
+$('f_txmode').onchange = syncChannels;
+$('f_rxmode').onchange = syncChannels;
+$('f_tx').oninput = syncChannels;
+$('f_rx').oninput = syncChannels;
+$('f_servicepick').onchange = () => { field('service').value = $('f_servicepick').value; syncChannels(); };
+$('f_txpick').onchange = () => { field('tx').value = $('f_txpick').value; syncChannels(); };
+$('f_rxpick').onchange = () => { field('rx').value = $('f_rxpick').value; syncChannels(); };
+$('pause').onclick = pauseLog;
+$('clearlog').onclick = () => { $('logtext').textContent = ''; };
+$('reload').onclick = loadConfig;
+$('import').onclick = importConfig;
+$('savetz').onclick = saveTimeZone;
+$('savedevice').onclick = saveDevice;
+$('calibrate').onclick = calibrateToMeasured;
+$('resetbattery').onclick = () => calibrateBattery(0);
+$('upload').onclick = upload;
+$('reboot').onclick = reboot;
+window.onhashchange = showView;
+
+// ---- Polling
+
+// One request at a time: the status and the log each at its own rate, one waiting for the other.
+// A view's own data comes at the fast rate, the other at the slow one; a hidden page (another browser tab in front) asks for nothing.
+// The status keeps the fast rate while a restart or a new image's confirmation is awaited: the firmware, configuration and restart
+// views learn of them from the status.
+const kFastStatusMs = 5000;
+const kFastLogMs = 2000;
+const kSlowMs = 60000;
+
+// When the status and the log were last fetched; 0: due now.
+let statusAt = 0;
+let logAt = 0;
+
+function statusInterval()
+{
+	return currentView() === 'status' || restart !== null || newSlot !== null ? kFastStatusMs : kSlowMs;
+}
+
+function logInterval()
+{
+	return currentView() === 'log' ? kFastLogMs : kSlowMs;
+}
+
+// Ends the poll loop's current wait; the loop then reads the view, the page's visibility and the due times anew.
+let wake = () => {};
+
+function wakePoll()
+{
+	wake();
+}
+
+// Resolves at `until` (a Date.now() time) or on wakePoll(), whichever comes first; Infinity waits for wakePoll() alone.
+function waitUntil(until)
+{
+	return new Promise((done) =>
+		{
+			const timer = until === Infinity ? null : setTimeout(done, Math.max(0, until - Date.now()));
+			wake = () => { clearTimeout(timer); done(); };
+		});
+}
+
+// The named view's data at once, as on a fresh page; the rest keeps its rate.
+function pollView(name)
+{
+	if (name === 'status')
+	{
+		statusAt = 0;
+	}
+
+	if (name === 'log')
+	{
+		logAt = 0;
+	}
+
+	wakePoll();
+}
+
+async function poll()
+{
+	while (true)
+	{
+		if (document.hidden)
+		{
+			await waitUntil(Infinity);
+			// back in front: both at once, then at their rates
+			statusAt = 0;
+			logAt = 0;
+			continue;
+		}
+
+		const now = Date.now();
+
+		if (now >= statusAt + statusInterval())
+		{
+			await refresh();
+			statusAt = Date.now();
+		}
+
+		if (now >= logAt + logInterval())
+		{
+			await pollLog();
+			logAt = Date.now();
+		}
+
+		await waitUntil(Math.min(statusAt + statusInterval(), logAt + logInterval()));
+	}
+}
+
+document.addEventListener('visibilitychange', wakePoll);
+
+showView();
+poll();
+</script>
+</body>
+</html>

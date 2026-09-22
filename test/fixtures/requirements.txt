@@ -1,0 +1,4 @@
+# Windows: Python 3.11 or older; for 3.12 and later bless 0.3.0 pins WinRT packages that the bleak it needs refuses
+bless==0.3.0
+# bless imports it on Windows without listing it (PyPI takes no git dependencies); from GitHub as bless's README says, git on PATH
+pysetupdi @ git+https://github.com/gwangyi/pysetupdi ; platform_system == "Windows"

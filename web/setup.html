@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<!-- w2b setup page, "/" on the setup access point and "/setup" on both; no external resources: the phone has no internet on the setup AP. -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>w2b setup</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="w2b.css">
+</head>
+<body>
+<nav class="navbar">
+<span class="brand">w2b<small>setup</small></span>
+</nav>
+<main class="container">
+<div class="card">
+<div class="toolbar"><h3>Networks</h3><button type="button" class="btn" id="rescan">Scan</button></div>
+<div id="nets" class="list"></div>
+</div>
+<div class="card">
+<h3>WiFi</h3>
+<form id="form">
+<label for="ssid">SSID</label>
+<input id="ssid" class="form-control" maxlength="32" required>
+<label for="pass">Password</label>
+<input id="pass" class="form-control" type="password" maxlength="64">
+<label class="check"><input type="checkbox" id="show"> show password</label>
+<label class="check"><input type="checkbox" id="static"> static IP address</label>
+<div id="fields" hidden>
+<label for="ip">IP address</label>
+<input id="ip" class="form-control" placeholder="the relay's address">
+<label for="gateway">Gateway</label>
+<input id="gateway" class="form-control" placeholder="the router's address">
+<label for="subnet">Subnet mask</label>
+<input id="subnet" class="form-control" value="255.255.255.0">
+<label for="dns">DNS server (optional)</label>
+<input id="dns" class="form-control">
+</div>
+<p><button class="btn btn-primary">Connect</button></p>
+</form>
+<p id="msg"></p>
+</div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+
+async function call(url, options)
+{
+	const response = await fetch(url, options);
+	const body = await response.json().catch(() => ({}));
+
+	if (!response.ok)
+	{
+		throw new Error(body.error || 'HTTP ' + response.status);
+	}
+
+	return body;
+}
+
+function say(text)
+{
+	$('msg').textContent = text;
+}
+
+function listNetworks(networks)
+{
+	const box = $('nets');
+	box.textContent = networks.length ? '' : 'No networks found.';
+
+	for (const net of networks)
+	{
+		const row = document.createElement('div');
+		const info = document.createElement('span');
+
+		row.textContent = net.ssid + (net.secured ? '' : ' (open)');
+		info.textContent = net.rssi + ' dBm, ch ' + net.channel;
+		row.appendChild(info);
+		row.onclick = () => { $('ssid').value = net.ssid; $('pass').focus(); };
+		box.appendChild(row);
+	}
+}
+
+async function scan()
+{
+	$('nets').textContent = 'Scanning...';
+
+	try
+	{
+		await call('/api/wifi/scan', { method: 'POST' });
+		let result;
+
+		do
+		{
+			await wait(1000);
+			result = await call('/api/wifi/scan/results');
+		}
+		while (result.state === 'requested' || result.state === 'running');
+
+		if (result.state !== 'done')
+		{
+			throw new Error('the scan failed');
+		}
+
+		listNetworks(result.networks);
+	}
+	catch (e)
+	{
+		$('nets').textContent = 'Scan: ' + e.message;
+	}
+}
+
+function showStatic(on)
+{
+	$('static').checked = on;
+	$('fields').hidden = !on;
+}
+
+async function load()
+{
+	try
+	{
+		const wifi = await call('/api/wifi');
+		$('ssid').value = wifi.ssid;
+		showStatic(wifi.static !== null);
+
+		if (wifi.static)
+		{
+			$('ip').value = wifi.static.ip;
+			$('gateway').value = wifi.static.gateway;
+			$('subnet').value = wifi.static.subnet;
+			$('dns').value = wifi.static.dns;
+		}
+
+		reportJoin(wifi);
+	}
+	catch (e)
+	{
+		say('Reading the saved settings failed: ' + e.message);
+	}
+}
+
+// How the last Connect ended, when it failed: the relay reopened this network for a correction.
+function reportJoin(wifi)
+{
+	const reasons =
+	{
+		password_rejected: 'the network rejected the password.',
+		network_not_found: 'the network was not found (name, range, or a security mode the relay does not support).',
+		no_link: 'no link within ' + wifi.join_limit_s + ' s.',
+	};
+
+	if (reasons[wifi.join])
+	{
+		say('The last Connect to "' + wifi.ssid + '" failed: ' + reasons[wifi.join]);
+	}
+}
+
+function settings()
+{
+	const text = (id) => $(id).value.trim();
+	const address = $('static').checked ? { ip: text('ip'), gateway: text('gateway'), subnet: text('subnet'), dns: text('dns') } : null;
+
+	return { ssid: $('ssid').value, password: $('pass').value, static: address };
+}
+
+async function connect(event)
+{
+	event.preventDefault();
+	say('Saving...');
+
+	try
+	{
+		await call('/api/wifi', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings()) });
+		let wifi;
+
+		do
+		{
+			await wait(500);
+			wifi = await call('/api/wifi');
+		}
+		while (wifi.save === 'pending');
+
+		say(wifi.save === 'saved'
+			? 'Saved. The relay now joins "' + wifi.ssid + '" and leaves this network. If the network refuses the settings, the setup'
+				+ ' network comes back within seconds, otherwise after ' + wifi.join_limit_s + ' s without a link; this page then tells why.'
+			: 'Saving failed on the relay; its log has the reason.');
+	}
+	catch (e)
+	{
+		say('Not saved: ' + e.message);
+	}
+}
+
+$('static').onchange = () => showStatic($('static').checked);
+$('show').onchange = () => { $('pass').type = $('show').checked ? 'text' : 'password'; };
+$('rescan').onclick = scan;
+$('form').onsubmit = connect;
+load().then(scan);
+</script>
+</body>
+</html>
