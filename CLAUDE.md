@@ -1,30 +1,24 @@
-# ble-relay: build, flash and monitor notes
+# ble-relay: build, test and layout notes
 
-Rules live in the workspace root `../CLAUDE.md`; the specification in
-`../PLAN.md` section 5, phases in section 9. This file holds only tooling notes.
+Claude builds and runs the host unit tests; the user flashes, runs the
+fixtures and pastes output back. Claude never talks to a running relay
+unless asked to.
 
-## Tooling on this machine (2026-09-22)
-- PlatformIO Core 6.2.0 is not on PATH. CLI:
-  `%USERPROFILE%\.platformio\penv\Scripts\pio.exe`
-  (VS Code PlatformIO IDE 3.3.4 is installed too).
+## Tooling
+- PlatformIO Core CLI: `pio`; on Windows, when it is not on PATH,
+  `%USERPROFILE%\.platformio\penv\Scripts\pio.exe`.
 - Platform `espressif32 55.03.312` (pioarduino: Arduino core 3.3.12 on
-  ESP-IDF 5.5.5), pinned by release URL in `platformio.ini` (PLAN.md §5.1).
-- `core_dir` is per project: `${PROJECT_DIR}/.pio-core` (PLAN.md D20).
+  ESP-IDF 5.5.5), pinned by release URL in `platformio.ini`.
+- `core_dir` is per project: `${PROJECT_DIR}/.pio-core`.
   Platforms, packages, toolchain and the pioarduino platform's own Python
   environment (`.pio-core/penv`, holding the `pioarduino` core fork and the
   esptool family) live there, git-ignored. The `pio` executable and the
   official core stay in `~/.platformio/penv`. The first build downloads
   about 1 GB; never run two `pio` processes during that first install.
-  Verified 2026-09-23 after the reset: `~/.platformio/penv` holds only
-  `platformio`; `pio run` builds both envs. `.pio-core/penv` has no pip
-  (uv-managed); list it with
+  `.pio-core/penv` has no pip (uv-managed); list it with
   `.pio-core\penv\Scripts\uv.exe pip list --python .pio-core\penv\Scripts\python.exe`.
-- Host compiler for the `native` env: MSYS2 UCRT64 GCC 16.1.0,
-  `C:\msys64\ucrt64\bin`, on PATH. PlatformIO calls plain `g++`.
-- Board serial port: COM5.
-- This folder is its own VS Code workspace (PlatformIO IDE needs
-  `platformio.ini` at the workspace root); the parent folder is a second
-  workspace holding PLAN.md and the HA repo.
+- Host compiler for the `native` env: a `g++` on PATH (on Windows, MSYS2
+  UCRT64 GCC); PlatformIO calls plain `g++`.
 
 ## Commands Claude may run
 ```
@@ -35,17 +29,17 @@ pio test -e native     # host unit tests
 
 ## Commands the user runs (flash, serial)
 ```
-pio run -e TZT-ESP32-Lite -t upload --upload-port COM5
-pio device monitor -p COM5 -b 115200
+pio run -e TZT-ESP32-Lite -t upload --upload-port <port>
+pio device monitor -p <port> -b 115200
 ```
 `default_envs` lists both envs, so always pass `-e TZT-ESP32-Lite` to upload.
 
-Firmware update over the network (E4), from the status page at
+Firmware update over the network, from the Firmware view at
 http://w2b.local/ or with curl:
 ```
 curl -F "firmware=@.pio/build/TZT-ESP32-Lite/firmware.bin" http://w2b.local/api/ota
 ```
-Config (E5), from the page's Config view or with curl. The export holds the
+Config, from the page's Config view or with curl. The export holds the
 WiFi password in plain text; the import writes `/config.json` and restarts
 the relay:
 ```
@@ -53,8 +47,8 @@ curl -OJ http://w2b.local/api/config/export
 curl -H "Content-Type: application/json" --data-binary @w2b-config.json http://w2b.local/api/config/import
 curl "http://w2b.local/api/log?since=0"
 ```
-Relay rules (E6), from the page's Relays view or with curl; each change writes
-`/config.json`. An enabled rule listens on its port (E8); with policy always it
+Relay rules, from the page's Relays view or with curl; each change writes
+`/config.json`. An enabled rule listens on its port; with policy always it
 connects to its device and subscribes its RX, with on demand once a TCP client
 connects, until `idle_s` after the last one left; disabling drops its clients
 and its link at once. `/api/status` lists every rule's link, clients and
@@ -68,17 +62,17 @@ curl -H "Content-Type: application/json" --data-binary @w2b-rule-id0.json http:/
 curl -X PUT -H "Content-Type: application/json" --data-binary @w2b-rule-id0.json http://w2b.local/api/rules/id0
 curl -X DELETE http://w2b.local/api/rules/id0
 ```
-BLE scan (E7a), from the form's Scan button or with curl; `{}` scans
+BLE scan, from the form's Scan button or with curl; `{}` scans
 `BleScanner::kDefaultSeconds`, `{"seconds": N}` up to `kMaxSeconds`, and the
 answer says how long. The relay sends scan requests to every device in
-range, the inverter's module included. Once the page has the list, it
+range. Once the page has the list, it
 calls clear, which frees the relay's copy (the page keeps its own):
 ```
 curl -H "Content-Type: application/json" -d "{}" http://w2b.local/api/ble/scan
 curl http://w2b.local/api/ble/scan/results
 curl -X POST http://w2b.local/api/ble/scan/clear
 ```
-BLE probe (E7b), from a scan row's Probe button, a pick, or with curl: the
+BLE probe, from a scan row's Probe button, a pick, or with curl: the
 request carries the device's `address`, `address_type` and `connectable` as
 the scan listed them (not connectable: 400, no connect); the relay connects,
 reads its GATT table with
@@ -91,7 +85,7 @@ The scan and the probe take turns (409):
 curl -H "Content-Type: application/json" -d "{\"address\": \"xx:xx:xx:xx:xx:xx\", \"address_type\": \"public\", \"connectable\": true}" http://w2b.local/api/ble/discover
 curl http://w2b.local/api/ble/discover/result
 ```
-TCP relay (E8): a client connected to a rule's port gets every indication of
+TCP relay: a client connected to a rule's port gets every indication of
 its RX, and its bytes go to its TX. Bytes beyond its 1 KB buffer are dropped
 and counted; a client that stops answering is reset by keepalive within 11 s,
 one that does not read is closed after 15 s.
@@ -99,8 +93,8 @@ one that does not read is closed after 15 s.
 The integration test (`test/fixtures/integration_test.py`, no options) runs
 the relay end to end from the laptop: it advertises its own GATT service
 (`7d2a1000-...`, two write/indicate pairs, nothing of the HF-LPT270's), finds
-the laptop in the relay's scan (scan requests go to every device in range,
-the inverter's module too), makes its rules `w2b-test A` and `B` through the
+the laptop in the relay's scan (scan requests go to every device in range),
+makes its rules `w2b-test A` and `B` through the
 API on ports from 18901 (each change writes `/config.json`; removed at the
 end, and at the next start after a stopped run), then sends requests over TCP
 that the GATT server checks and answers, and checks the replies. Eight
@@ -177,12 +171,12 @@ test\fixtures\.venv\Scripts\python.exe test\fixtures\stress_test.py
   registered with `every(periodMs, task)` / `once(delayMs, task)`; wrap a
   module call in a lambda, there are no Component overloads. The thread
   sleeps until the next task is due. Blocking work gets its own
-  `Thread::start(body)`. Arduino's `loop()` is not used (PLAN.md D21,
-  section 5.6). Modules shared between threads take a `Lock`.
+  `Thread::start(body)`. Arduino's `loop()` is not used. Modules shared
+  between threads take a `Lock`.
 - One PlatformIO environment per hardware, named after the board
   (`TZT-ESP32-Lite`), plus `native`.
-- Web pages are files in `web/`, linked into the firmware image (PLAN.md
-  D24), so they flash and update with the code. Never on LittleFS. The
+- Web pages are files in `web/`, linked into the firmware image, so they
+  flash and update with the code. Never on LittleFS. The
   pre-build script `scripts/web_assets.py` inlines `<link rel="stylesheet"
   href="x.css">` and `<script src="x.js"></script>` from `web/`, minifies by line and gzips every `web/*.html`
   into `.pio/build/<env>/generated/WebAssets.h` (array `indexHtml` for
@@ -253,13 +247,12 @@ test\fixtures\.venv\Scripts\python.exe test\fixtures\stress_test.py
   `protected` then `private`, the inline getters of each section as one
   group first; fields, `public` then `protected` then `private`.
 - Comments (user, 2026-09-26; the repository goes public): they state what
-  is. Never history ("was", "no longer", "since E5", dates), decisions or who
-  asked for something, never PLAN.md, its sections (§5.8) or its decision and
-  phase numbers (D22, E6). In a header a comment is at most 2 lines, the file
+  is. Never history ("was", "no longer", dates), decisions or who
+  asked for something, never a plan document, its sections or its decision
+  and phase numbers. In a header a comment is at most 2 lines, the file
   comment included; in a `.cpp`, `.html`, `.css`, `.py` or `.ini` at most 1
   line, and only where the code is not obvious or to set a block apart.
-  The state changes the root `CLAUDE.md` asks for fit in that too
-  ("Writes /config.json.").
+  A state change is named in it too ("Writes /config.json.").
 - Every public class, enum, enum value, free function and public member
   (method, constructor, constant, alias) has a comment; destructors and
   deleted members need none. Private members get one only where not
@@ -300,7 +293,7 @@ test\fixtures\.venv\Scripts\python.exe test\fixtures\stress_test.py
 - State is read through `const` getters, never public fields. Prefer
   methods that do not modify state, compute instead of caching, and keep
   as little state as possible.
-- Data classes (PLAN.md D23): private fields, `const` getters, public
+- Data classes: private fields, `const` getters, public
   constructors that set every field. Text of a known limit is a
   `FixedString<N>` (`lib/core`) under a named alias (`WifiConfig::SSID`,
   `IPv4Str`), next to the function that parses or checks it; a list of a
