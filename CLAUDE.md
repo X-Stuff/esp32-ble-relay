@@ -4,6 +4,10 @@ Claude builds and runs the host unit tests; the user flashes, runs the
 fixtures and pastes output back. Claude never talks to a running relay
 unless asked to.
 
+The design, the configuration and relay semantics, the HTTP API and the
+platform facts the code depends on: `docs/design.md`. Read it before
+changing behaviour; keep it true when behaviour changes.
+
 ## Tooling
 - PlatformIO Core CLI: `pio`; on Windows, when it is not on PATH,
   `%USERPROFILE%\.platformio\penv\Scripts\pio.exe`.

@@ -28,7 +28,7 @@ namespace
 
 // The HF-LPT270 rule, in the order toJson writes it.
 const char* const kPlanRule =
-	R"({"id":"inv1","name":"Renac inverter","enabled":true,"listen_port":8899,"max_clients":1,)"
+	R"({"id":"inv1","name":"Relay 1","enabled":true,"listen_port":8899,"max_clients":1,)"
 	R"("target":{"address":"12:34:56:78:9a:bc","name":"HF-LPT270"},"service_uuid":"fee7",)"
 	R"("tx":{"mode":"uuid","uuid":"fed5","write_with_response":true},"rx":{"mode":"uuid","uuid":"fed6","subscribe":"indicate"},)"
 	R"("coalesce_ms":10,"oversize":"chunk","connect_policy":"on_demand","idle_s":3,)"
@@ -345,7 +345,7 @@ static void test_channels_need_a_uuid_with_mode_uuid_only()
 static void test_id_and_label_rules()
 {
 	TEST_ASSERT_TRUE(w2b::isValidRuleId("inv1"));
-	TEST_ASSERT_TRUE(w2b::isValidRuleId("Renac_inverter-2"));
+	TEST_ASSERT_TRUE(w2b::isValidRuleId("Relay_1-2"));
 	TEST_ASSERT_TRUE(w2b::isValidRuleId(std::string(32, 'a').c_str()));
 	TEST_ASSERT_FALSE(w2b::isValidRuleId(std::string(33, 'a').c_str()));
 	TEST_ASSERT_FALSE(w2b::isValidRuleId(""));
@@ -353,7 +353,7 @@ static void test_id_and_label_rules()
 	TEST_ASSERT_FALSE(w2b::isValidRuleId("inv/1"));
 
 	TEST_ASSERT_TRUE(w2b::isValidLabel(""));
-	TEST_ASSERT_TRUE(w2b::isValidLabel("Renac inverter, Küche"));
+	TEST_ASSERT_TRUE(w2b::isValidLabel("Relay 1, Küche"));
 	TEST_ASSERT_FALSE(w2b::isValidLabel("tab\there"));
 }
 
@@ -467,7 +467,7 @@ static void test_rule_list_shape_is_checked()
 
 static void test_constructor_sets_every_field()
 {
-	const RuleConfig built("inv1", "Renac inverter", true, 8899, 1, TargetConfig(address("12:34:56:78:9a:bc"), "HF-LPT270"),
+	const RuleConfig built("inv1", "Relay 1", true, 8899, 1, TargetConfig(address("12:34:56:78:9a:bc"), "HF-LPT270"),
 		uuid("fee7"), TxConfig(ChannelMode::Uuid, uuid("fed5"), true), RxConfig(ChannelMode::Uuid, uuid("fed6"), RxConfig::Subscribe::Indicate), 10,
 		RuleConfig::Oversize::Chunk, RuleConfig::ConnectPolicy::OnDemand, 3, {2, 4, 8, 10, 30}, false, false);
 	RuleConfig parsed = SerializableFactory::createEmpty<RuleConfig>();

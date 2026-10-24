@@ -182,6 +182,10 @@ the TCP server are tested end to end against a laptop acting as a BLE
 peripheral (`test/fixtures/integration_test.py`), and a stress test climbs a
 ladder of clients to find where the memory ends.
 
+The design notes in [docs/design.md](docs/design.md) hold the decisions
+behind the code, the configuration and relay semantics in full, the whole
+HTTP API, and the platform and library facts the code depends on.
+
 ## License
 
 MIT, see [LICENSE](LICENSE). The libraries the firmware is built with keep

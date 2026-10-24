@@ -20,7 +20,7 @@ constexpr const char* kRulesPath = "/api/rules";
 // a rule is about 1 KB at most, indented as its export writes it
 constexpr size_t kMaxBodyBytes = 2048;
 
-// "/api/rules/inv1/export": id "inv1", action "export"; "/api/rules/inv1": action empty.
+// "/api/rules/id0/export": id "id0", action "export"; "/api/rules/id0": action empty.
 void splitPath(const AsyncWebServerRequest* request, std::string& id, std::string& action)
 {
 	const std::string path = request->url().c_str();

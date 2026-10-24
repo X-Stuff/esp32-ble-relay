@@ -366,7 +366,7 @@ class Relay:
 
             await asyncio.sleep(0.2)
 
-    # A BLE scan on the relay: it sends scan requests to every device in range, the inverter's module too.
+    # A BLE scan on the relay: it sends scan requests to every device in range.
     async def scan(self, seconds):
         await self.request("POST", "/api/ble/scan", {"seconds": seconds}, expect=(202,))
         deadline = time.monotonic() + seconds + 10
